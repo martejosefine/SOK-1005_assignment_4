@@ -1,0 +1,219 @@
+---
+title: "SOK-1005-assignment-4"
+author: “Marte J. Skadssem Haetta Eikelmann”
+format: pdf
+echo: true
+output: true
+---
+
+### **First; Clear the sheet and load necessary packages**.
+
+```{r}
+#removing all previous data to start on a clean sheet.
+
+rm(list=ls())
+
+
+#loading necessary packages
+
+library(tidyverse)
+library(ggplot2)
+library(dplyr)
+library(lubridate)
+library(fredr)
+library(pdfetch)
+```
+
+## Task 1
+
+```{r}
+#importing the data
+
+df <- read.csv(file = 'https://raw.githubusercontent.com/uit-sok-1005-v23/uit-sok-1005-v23.github.io/main/storedata.csv')
+
+
+#changing the "date" variable from string to a date variable
+
+df$Order_Date <- ymd(df$Order_Date)
+```
+
+### 1.
+
+```{r}
+#filtering and rearranging data into Table_1
+
+Table_1 <- df %>%
+  filter(Region == "Region 1" | Region == "Region 9") %>%
+  filter(Customer_Segment == "Corporate" | Customer_Segment == "Consumer") %>%
+  filter(Order_Date >= "2017-10-01", Order_Date <= "2017-12-31") %>%
+  mutate(Order_Date = as.Date(Order_Date)) %>% #mutating Order_Date into a date variable
+  arrange(Order_Date) %>%
+  arrange(Region)
+```
+
+```{r}
+#aggregating and summing the values based on the conditions Region, Customer_Segment and month.
+
+Table_1 <- Table_1 %>%
+  aggregate(Sales~Region+Customer_Segment+lubridate::month(Order_Date), FUN=sum) %>%
+  rename("month"="lubridate::month(Order_Date)") #renaming the time variable
+```
+
+### 2.
+
+```{r}
+Figure_1 <- df %>%
+  #filtering the data
+  filter(Region == "Region 1" | Region == "Region 13") %>%
+  filter(Order_Date >= "2015-01-01", Order_Date <= "2017-12-31") %>%
+  #grouping the data to summarize by month and region
+  group_by("date" = lubridate::floor_date(Order_Date, "month"),Region) %>%
+  summarize(Sales = sum(Sales))
+```
+
+```{r}
+#plotting Figure 1
+
+Figure_1 %>%
+  ggplot(aes(x=date,y=Sales,color=Region)) +
+  labs(title="Sales in Region 1 and 13 from 2015 to 2017", x="Timeline", y="Sales") +
+  geom_line() +
+  theme_light()
+```
+
+### 3.
+
+```{r}
+Table_2 <- Figure_1 %>%
+  #making the data frame longer 
+  pivot_wider(names_from = Region, values_from = Sales) %>%
+  #renaming the variables
+  rename(region_1 = "Region 1", region_13 = "Region 13") %>%
+  #filtering out the region_13-values which are lower than region_1 
+  filter(region_13 > region_1)
+```
+
+### 4.
+
+```{r}
+Table_3 <- df %>%
+  #filtering the data
+  filter(!(Region == "Region 3" | Region == "Region 5" | Region == "Region 8")) %>%
+  filter(Order_Date >= "2017-01-01", Order_Date <= "2017-12-31") %>%
+  #grouping the data by variables
+  group_by(Region,Customer_Segment,Product_Category) %>%
+  summarize(profit_mean = mean(Profit))
+```
+
+```{r}
+#searching the max profit value
+
+Table_3[which.max(Table_3$profit_mean),]
+```
+
+*The Small Business segment in the Technology category produced the highest average profit.*
+
+## Task 2
+
+***Exxon Mobil Corporation***
+
+```{r}
+#loading the Exxon Mobile Corporation data
+
+exxon_mobile = as.data.frame(pdfetch_YAHOO("XOM"))
+```
+
+```{r}
+#setting the index as a variable instead
+
+exxon_mobile <- cbind(date = rownames(exxon_mobile),exxon_mobile)
+
+rownames(exxon_mobile) <- 1:nrow(exxon_mobile)
+
+
+#changing the "date" variable from string to a date variable
+
+exxon_mobile$date <- ymd(exxon_mobile$date)
+```
+
+```{r}
+exxon_mobile <- exxon_mobile %>%
+  filter(date >= "2010-01-04", date <= "2022-12-01") %>% #filtering the "date" variable to given dates
+  group_by(month = lubridate::floor_date(date, "month")) %>% #grouping the data by months of the same year
+  summarize(exxon = weighted.mean(XOM.adjclose, XOM.volume)) #calculating the weighted mean and storing it as a new variable callen "exxon"
+
+```
+
+***Brent Crude Oli Price***
+
+```{r}
+#loading the API
+
+fredr_set_key("4f368270b19548301800078c74730b5c")
+
+api_key <- fredr_get_key()
+```
+
+```{r}
+#loading in the data using the fredr package and calling the data frame brent_crude_oil_price
+
+brent_crude_oil_price <- fredr(series_id = "DCOILBRENTEU", frequency = "d", observation_start = as.Date("2010-01-04"), observation_end = as.Date("2022-12-01"))
+```
+
+```{r}
+#mutating all NA values to 0
+
+brent_crude_oil_price <- brent_crude_oil_price %>%
+    mutate(value = if_else(is.na(value), 0, value))
+```
+
+```{r}
+#finding the monthly mean and making a new variable called "oil"
+
+brent_crude_oil_price <- brent_crude_oil_price %>% 
+    group_by(month = lubridate::floor_date(date, "month")) %>%
+    summarize(oil = mean(value))
+```
+
+### Plotting the data:
+
+```{r}
+#plotting fig1
+
+fig1 <- ggplot() + 
+  geom_line(data=exxon_mobile, aes(x=month, y=exxon), color="red", label='Exxon Mobile Corporation stock price') + 
+  geom_line(data=brent_crude_oil_price, aes(x=month, y=oil), color="blue",label="oil") +
+  labs(title="The average of Exxon Mobile Corporation stock price (red) and 
+Brent Crude oil price (blue) 2010-2022", x="Month", y="Price") +
+  theme_light()
+
+fig1
+```
+
+*From 2010 to 2015 the ExxonMobile stock price was noticeable below the Brent Crude oil price. But from 2015 and until the end of 2022 the stock price and the oil price has to a significant degree followed each others price patterns closely. The drop in the Brent Crude oil price before 2015 can be linked to the rise of the US shale oil industry and the what that went down at that point in the OPEC cartel.*
+
+```{r}
+#bin the column "oil" into the exxon_mobile dataframe.
+
+all_data <- exxon_mobile %>%
+  cbind(oil = brent_crude_oil_price$oil)
+```
+
+```{r}
+#plotting fig2
+
+fig2 <- all_data %>%
+  ggplot(aes(x=oil,y=exxon)) + 
+  geom_point(color="dark blue") +
+  geom_smooth(method = lm) +
+  labs(title="The Exxon Mobile Corporation stock price relative to  
+Brent Crude oil price", x="Brent Crude oil price", y="Exxon Mobile Corporation stock price")
+
+fig2
+```
+
+```{r}
+#using the lm() function to find the coefficients of the linear regression model.
+
+lm(exxon ~ oil, data=all_data)
+```
